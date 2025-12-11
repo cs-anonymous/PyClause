@@ -344,6 +344,45 @@ private:
 	int constant;
 
 };
+
+// RuleM: Multi-Rule composition
+// Multiple rules with same head but different bodies, combined with AND semantics
+// Example: h(X,Y) <= body1 ; body2 ; body3
+class RuleM: public Rule
+{
+public:
+	RuleM(std::vector<std::unique_ptr<Rule>>& memberRules);
+	~RuleM() override;
+	// Print rule information
+	void print();
+	// Predict by intersecting results from all member rules
+	bool predictHeadQuery(int tail, TripleStorage& triples, QueryResults& headResults, ManySet filterSet=ManySet());
+	bool predictTailQuery(int head, TripleStorage& triples, QueryResults& tailResults, ManySet filterSet=ManySet());
+	// Materialize by intersecting all member materialization results
+	void materialize(TripleStorage& triples, std::unordered_set<Triple>& preds);
+	// Serialize with semicolons separating member rules
+	std::string computeRuleString(Index* index);
+	// Predict triple by checking all member rules
+	bool predictTriple(int head, int tail, TripleStorage& triples, QueryResults& qResults, RuleGroundings* groundings);
+	
+	// Hash functions - bodyhash is computed in constructor
+	long long getBodyHash() { return bodyhash; }
+	void computeBodyHash() { /* Already computed in constructor */ }
+	
+	// Override prediction capability setters
+	void setPredictHead(bool ind) { predictHead = ind; }
+	void setPredictTail(bool ind) { predictTail = ind; }
+	
+	size_t getNumMembers() const { return memberRules.size(); }
+	
+private:
+	// Member rules sharing the same head relation
+	std::vector<std::unique_ptr<Rule>> memberRules;
+	
+	// Helper function to intersect two QueryResults
+	void intersectQueryResults(QueryResults& result1, QueryResults& result2, QueryResults& output);
+};
+
 #endif // RULE_H
 
 

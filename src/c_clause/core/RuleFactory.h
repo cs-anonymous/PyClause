@@ -23,6 +23,7 @@ public:
     std::unique_ptr<Rule> parseUXXrule(std::vector<std::string> headBody, int numPreds=-1, int numTrue=-1);
     std::unique_ptr<Rule> parseUcRule(std::vector<std::string> headBody, int numPreds=-1, int numTrue=-1);
     std::unique_ptr<Rule> parseUdRule(std::vector<std::string> headBody, int numPreds=-1, int numTrue=-1);
+    std::unique_ptr<Rule> parseMRule(std::string rule, int numPreds=-1, int numTrue=-1);
 
     void parseAtom(const std::string& input, strAtom& atom);
     void parseSymAtom(strAtom& inputAtom, symAtom& symA);
@@ -37,6 +38,7 @@ public:
     void setCreateRuleD(bool ind);
     void setCreateRuleXXd(bool ind);
     void setCreateRuleXXc(bool ind);
+    void setCreateRuleM(bool ind);
     void setNumUnseen(int val, std::string type);
 
     void setMinCorrect(int val, std::string type);
@@ -80,12 +82,16 @@ private:
     bool createRuleXXc = true;
     int XXCnumUnseen = 0;
 
+    bool createRuleM = true;
+    int MnumUnseen = 0;
+
     int ZminCorrect = 1;
     int BminCorrect = 1;
     int CminCorrect = 1;
     int DminCorrect = 1;
     int XXDminCorrect = 1;
     int XXCminCorrect = 1;
+    int MminCorrect = 1;
 
     int ZminPreds = 1;
     int BminPreds = 1;
@@ -93,6 +99,7 @@ private:
     int DminPreds = 1;
     int XXDminPreds = 1;
     int XXCminPreds = 1;
+    int MminPreds = 1;
 
     int BmaxLength = -1;
     int CmaxLength = -1;
@@ -105,6 +112,7 @@ private:
     double DminConf = 0.00001;
     double XXDminConf = 0.00001;
     double XXCminConf = 0.00001;
+    double MminConf = 0.00001;
 };
 
 

@@ -181,6 +181,12 @@ void Loader::setRuleOptions(std::map<std::string, std::string> options, RuleFact
         {"xxd_min_support", [&ruleFactory](std::string val) {ruleFactory.setMinCorrect(std::stoi(val), "xxd");}},
         {"xxd_min_preds", [&ruleFactory](std::string val) {ruleFactory.setMinPred(std::stoi(val), "xxd");}},
         {"xxd_min_conf", [&ruleFactory](std::string val) {ruleFactory.setMinConf(std::stod(val), "xxd");}},
+        // M (Multi-Rule)
+        {"load_m_rules", [&ruleFactory](std::string val) {ruleFactory.setCreateRuleM(util::stringToBool(val));}},
+        {"m_num_unseen", [&ruleFactory](std::string val) {ruleFactory.setNumUnseen(std::stoi(val), "m");}},
+        {"m_min_support", [&ruleFactory](std::string val) {ruleFactory.setMinCorrect(std::stoi(val), "m");}},
+        {"m_min_preds", [&ruleFactory](std::string val) {ruleFactory.setMinPred(std::stoi(val), "m");}},
+        {"m_min_conf", [&ruleFactory](std::string val) {ruleFactory.setMinConf(std::stod(val), "m");}},
         // other
         {"num_threads", [this](std::string val) {this->setNumThreads(std::stoi(val));}},
         

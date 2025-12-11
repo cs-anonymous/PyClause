@@ -257,6 +257,13 @@ std::unique_ptr<Rule>RuleFactory::parseUXXrule(std::vector<std::string> headBody
 }
 
 std::unique_ptr<Rule> RuleFactory::parseAnytimeRule(std::string rule, int numPreds, int numTrue) {
+    // Check for RuleM (multi-rule) first - contains semicolon separator
+    if (rule.find(';') != std::string::npos) {
+        std::cout << "[RuleFactory] Detected semicolon separator - parsing as RuleM" << std::endl;
+        std::cout << "[RuleFactory] Rule: " << rule << std::endl;
+        return parseMRule(rule, numPreds, numTrue);
+    }
+    
     std::string ruleType;
     std::vector<std::string> headBody = util::splitString(rule, _cfg_prs_ruleSeparator);
     std::string headAtomStr = headBody[0];
@@ -665,6 +672,23 @@ void RuleFactory::updateRules(std::vector<std::unique_ptr<Rule>>& rules, std::un
             relToRules[r->getTargetRel()].insert(r.get());
             numNew += 1;
 
+        } else if ((strcmp(type, "m")==0)){
+             if (!createRuleM){
+                continue;
+            }
+            if (MminPreds>numPred){
+                continue;
+            }
+            if (MminCorrect>truePred){
+                continue;
+            } 
+            if (MminConf > ((double) truePred/ (double) numPred) ){
+                continue;
+            }         
+            r->setNumUnseen(MnumUnseen);
+            relToRules[r->getTargetRel()].insert(r.get());
+            numNew += 1;
+
         } else {
             throw std::runtime_error("Did not recognize rule type in updating. This should never happen.");
         }
@@ -716,6 +740,10 @@ void RuleFactory::setCreateRuleXXc(bool ind){
     createRuleXXc = ind;
 }
 
+void RuleFactory::setCreateRuleM(bool ind){
+    createRuleM = ind;
+}
+
 void RuleFactory::setBbranchingFactor(int val){
     BbranchingFactor = val;
 }
@@ -760,6 +788,8 @@ void RuleFactory::setNumUnseen(int val, std::string type){
         XXCnumUnseen = val;
     }else if (type=="d"){
         DnumUnseen = val;
+    }else if (type=="m"){
+        MnumUnseen = val;
     }else{
        throw std::runtime_error("Did not recognize rule type in setting num_unseen: " + type );
     }
@@ -779,6 +809,8 @@ void RuleFactory::setMinCorrect(int val, std::string type){
         XXCminCorrect = val;
     }else if (type=="d"){
         DminCorrect = val;
+    }else if (type=="m"){
+        MminCorrect = val;
     }else{
        throw std::runtime_error("Did not recognize rule type in setting min_correct: " + type );
     }
@@ -788,7 +820,7 @@ void RuleFactory::setMinPred(int val, std::string type){
     if (type=="z"){
          ZminPreds = val;
     }else if(type=="b"){
-        BminPreds = val;
+        BminPreds= val;
     }else if(type=="c"){
         CminPreds = val;
     }else if(type=="xxd"){
@@ -797,6 +829,8 @@ void RuleFactory::setMinPred(int val, std::string type){
         XXCminPreds = val;
     }else if (type=="d"){
         DminPreds = val;
+    }else if (type=="m"){
+        MminPreds = val;
     }else{
        throw std::runtime_error("Did not recognize rule type in setting min_preds: " + type );
     }
@@ -815,9 +849,100 @@ void RuleFactory::setMinConf(double val, std::string type){
         XXCminConf = val;
     }else if (type=="d"){
         DminConf = val;
+    }else if (type=="m"){
+        MminConf = val;
     }else{
        throw std::runtime_error("Did not recognize rule type in setting min_preds: " + type );
     }
+}
+
+
+// Parse RuleM - multi-rule with semicolon-separated bodies
+std::unique_ptr<Rule> RuleFactory::parseMRule(std::string rule, int numPreds, int numTrue) {
+    if (!createRuleM) {
+        return nullptr;
+    }
+    
+    // Check thresholds
+    if (numPreds > 0 && MminPreds > numPreds) {
+        return nullptr;
+    }
+    if (numTrue > 0 && MminCorrect > numTrue) {
+        return nullptr;
+    }
+    if (numTrue > 0 && ((double)numTrue / (double)numPreds) < MminConf) {
+        return nullptr;
+    }
+    
+    // Split by rule separator "<=", should get head and composite body
+    std::vector<std::string> headBody = util::splitString(rule, _cfg_prs_ruleSeparator);
+    if (headBody.size() != 2) {
+        std::cout << "[RuleFactory::parseMRule] ERROR: Invalid split result, parts count: " << headBody.size() << std::endl;
+        throw std::runtime_error("Invalid RuleM format: " + rule);
+    }
+    
+    std::string headStr = headBody[0];
+    std::string bodiesStr = headBody[1];
+    
+    std::cout << "[RuleFactory::parseMRule] Head: " << headStr << std::endl;
+    std::cout << "[RuleFactory::parseMRule] Bodies: " << bodiesStr << std::endl;
+    
+    // Split bodies by semicolon
+    std::vector<std::string> bodyParts = util::splitString(bodiesStr, ";");
+    if (bodyParts.empty()) {
+        std::cout << "[RuleFactory::parseMRule] ERROR: No body parts found after splitting by semicolon" << std::endl;
+        throw std::runtime_error("RuleM must have at least one body: " + rule);
+    }
+    
+    std::cout << "[RuleFactory::parseMRule] Found " << bodyParts.size() << " member bodies" << std::endl;
+    
+    // Parse each sub-rule
+    std::vector<std::unique_ptr<Rule>> memberRules;
+    for (size_t i = 0; i < bodyParts.size(); ++i) {
+        const auto& bodyPart = bodyParts[i];
+        std::cout << "[RuleFactory::parseMRule] Processing member body " << (i+1) << ": " << bodyPart << std::endl;
+        // Trim whitespace
+        std::string trimmedBody = bodyPart;
+        size_t start = trimmedBody.find_first_not_of(" \t");
+        size_t end = trimmedBody.find_last_not_of(" \t");
+        if (start != std::string::npos && end != std::string::npos) {
+            trimmedBody = trimmedBody.substr(start, end - start + 1);
+        }
+        
+        // Reconstruct individual rule: head <= body
+        std::string individualRule = headStr + _cfg_prs_ruleSeparator + trimmedBody;
+        
+        std::cout << "[RuleFactory::parseMRule] Reconstructed rule " << (i+1) << ": " << individualRule << std::endl;
+        
+        // Parse as regular rule (will not trigger RuleM parsing again as no semicolon)
+        std::unique_ptr<Rule> memberRule;
+        try {
+            memberRule = parseAnytimeRule(individualRule, -1, -1);
+        } catch (const std::exception& e) {
+            std::cout << "[RuleFactory::parseMRule] ERROR: Exception when parsing member rule " << (i+1) << ": " << e.what() << std::endl;
+            throw;  // Re-throw to propagate the error
+        }
+        
+        if (!memberRule) {
+            // If any member fails to parse, the whole RuleM fails
+            std::cout << "[RuleFactory::parseMRule] ERROR: Failed to parse member rule " << (i+1) << " (returned nullptr)" << std::endl;
+            return nullptr;
+        }
+        
+        std::cout << "[RuleFactory::parseMRule] Successfully parsed member rule " << (i+1) << std::endl;
+        memberRules.push_back(std::move(memberRule));
+    }
+    
+    std::cout << "[RuleFactory::parseMRule] Creating RuleM with " << memberRules.size() << " members" << std::endl;
+    
+    // Create RuleM with member rules
+    std::unique_ptr<RuleM> rulem = std::make_unique<RuleM>(memberRules);
+    rulem->setNumUnseen(MnumUnseen);
+    rulem->setStats(numTrue, numPreds, false);
+    
+    std::cout << "[RuleFactory::parseMRule] RuleM created successfully" << std::endl;
+    
+    return std::move(rulem);
 }
 
 

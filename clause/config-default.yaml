@@ -107,6 +107,16 @@ loader:
   xxd_min_preds: -1
   xxd_min_conf: 0.0001
 
+  ## M rules (Multi-Rule)
+  # parsable example: "h(X,Y) <= b1(X,A), b2(A,Y); b3(X,B), b4(B,Y)"
+  # multiple rule bodies separated by semicolons, all sharing the same head
+  # predictions require ALL member rules to agree (intersection semantics)
+  load_m_rules: True
+  m_num_unseen: 5
+  m_min_support: -1
+  m_min_preds: -1
+  m_min_conf: 0.0001
+
 
 # calculates rankings based on the "target" KG loaded into DataLoader
 # e.g. target argument from loader.load_data(data=.., filter=.., target=..)

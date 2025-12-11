@@ -115,9 +115,10 @@ void RuleStorage::readAnyTimeParFormat(std::string path, bool exact, int numThre
                 }
             catch(const std::exception& e)
                 {
-                    std::cout<<"Could not parse this rule " + ruleLine<<std::endl;
-                    std::cout<<"Skipping it, but please check your format."<<std::endl;
-                    std::cout<<"And check that if entities are contained, that they are loaded with the data."<<std::endl;
+                    std::cout<<"[RuleStorage] Could not parse this rule: " + ruleLine<<std::endl;
+                    std::cout<<"[RuleStorage] Exception details: " << e.what() << std::endl;
+                    std::cout<<"[RuleStorage] Skipping it, but please check your format."<<std::endl;
+                    std::cout<<"[RuleStorage] And check that if entities are contained, that they are loaded with the data."<<std::endl;
                 }
 
             if (rule){
