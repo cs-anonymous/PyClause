@@ -8,4 +8,7 @@ extern std::string _cfg_prs_equalityToken;
 extern std::string _cfg_prs_ruleSeparator;
 extern std::string _cfg_prs_atomSeparator;
 
+// Debug flag for RuleM operations
+extern bool RuleMDebug;
+
 #endif

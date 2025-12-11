@@ -3,6 +3,7 @@
 
 #include "Rule.h"
 #include "Types.h"
+#include "Globals.h"
 
 
 // ***Base Rule implementation***
@@ -1478,7 +1479,9 @@ bool RuleXXc::predictTriple(int head, int tail, TripleStorage& triples, QueryRes
 // ==================== RuleM Implementation ====================
 
 RuleM::RuleM(std::vector<std::unique_ptr<Rule>>& memberRules) {
-	std::cout << "[RuleM::Constructor] Starting construction with " << memberRules.size() << " member rules" << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::Constructor] Starting construction with " << memberRules.size() << " member rules" << std::endl;
+	}
 	
 	if (memberRules.empty()) {
 		throw std::runtime_error("RuleM requires at least one member rule");
@@ -1492,7 +1495,9 @@ RuleM::RuleM(std::vector<std::unique_ptr<Rule>>& memberRules) {
 	
 	// Inherit properties from first member rule
 	this->targetRel = this->memberRules[0]->getTargetRel();
-	std::cout << "[RuleM::Constructor] Target relation: " << this->targetRel << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::Constructor] Target relation: " << this->targetRel << std::endl;
+	}
 	
 	// Calculate total length as sum of all member rule lengths
 	this->length = 0;
@@ -1501,46 +1506,9 @@ RuleM::RuleM(std::vector<std::unique_ptr<Rule>>& memberRules) {
 		int memberBodyLength = rule->getRelations().size() - 1;
 		this->length += memberBodyLength;
 	}
-	std::cout << "[RuleM::Constructor] Total length: " << this->length << std::endl;
-	
-	// Calculate bodyhash combining all member rule bodyhashes
-	// Strategy: Sort hashes and then combine them
-	// This ensures order-independence while detecting duplicates
-	std::vector<long long> memberHashes;
-	memberHashes.reserve(this->memberRules.size());
-	
-	std::cout << "[RuleM::Constructor] Collecting bodyhashes from member rules:" << std::endl;
-	for (size_t i = 0; i < this->memberRules.size(); ++i) {
-		long long hash = this->memberRules[i]->getBodyHash();
-		std::cout << "[RuleM::Constructor]   Member " << (i+1) << " bodyhash: " << hash << std::endl;
-		memberHashes.push_back(hash);
+	if (RuleMDebug) {
+		std::cout << "[RuleM::Constructor] Total length: " << this->length << std::endl;
 	}
-	
-	// Sort to ensure order-independence
-	std::sort(memberHashes.begin(), memberHashes.end());
-	
-	// Check for duplicates (consecutive elements in sorted array)
-	for (size_t i = 1; i < memberHashes.size(); ++i) {
-		if (memberHashes[i] == memberHashes[i-1]) {
-			std::cout << "[RuleM::Constructor] ERROR: Duplicate bodyhash detected!" << std::endl;
-			std::cout << "[RuleM::Constructor] Hash value: " << memberHashes[i] << std::endl;
-			std::cout << "[RuleM::Constructor] Found at positions: " << (i-1) << " and " << i << std::endl;
-			throw std::runtime_error(
-				"RuleM contains member rules with identical bodyhash values. "
-				"This indicates duplicate or equivalent rules in the RuleM, which is invalid."
-			);
-		}
-	}
-	
-	std::cout << "[RuleM::Constructor] All " << memberHashes.size() << " member hashes are unique" << std::endl;
-	
-	// Combine hashes using XOR (order-independent after sorting and duplicate check)
-	this->bodyhash = 0;
-	for (long long hash : memberHashes) {
-		this->bodyhash ^= hash;
-	}
-	
-	std::cout << "[RuleM::Constructor] Combined bodyhash: " << this->bodyhash << std::endl;
 	
 	// Set prediction capabilities based on member rules
 	this->predictHead = true;
@@ -1553,18 +1521,6 @@ RuleM::RuleM(std::vector<std::unique_ptr<Rule>>& memberRules) {
 
 RuleM::~RuleM() {
 	// unique_ptr handles cleanup automatically
-}
-
-void RuleM::print() {
-	std::cout << "RuleM (ID=" << ID << ", type=" << type << ", targetRel=" << targetRel 
-	          << ", length=" << length << ", bodyhash=" << bodyhash << ")" << std::endl;
-	std::cout << "  Members: " << memberRules.size() << " rules" << std::endl;
-	for (size_t i = 0; i < memberRules.size(); i++) {
-		std::cout << "  [" << (i+1) << "] ";
-		memberRules[i]->print();
-	}
-	std::cout << "  Stats: predicted=" << predicted << ", cpredicted=" << cpredicted 
-	          << ", sampledPredicted=" << sampledPredicted << ", sampledCpredicted=" << sampledCpredicted << std::endl;
 }
 
 void RuleM::intersectQueryResults(QueryResults& result1, QueryResults& result2, QueryResults& output) {
@@ -1582,7 +1538,9 @@ void RuleM::intersectQueryResults(QueryResults& result1, QueryResults& result2, 
 }
 
 bool RuleM::predictHeadQuery(int tail, TripleStorage& triples, QueryResults& headResults, ManySet filterSet) {
-	std::cout << "[RuleM::predictHeadQuery] Starting with " << memberRules.size() << " member rules, tail=" << tail << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::predictHeadQuery] Starting with " << memberRules.size() << " member rules, tail=" << tail << std::endl;
+	}
 	
 	if (memberRules.empty()) return false;
 	
@@ -1591,45 +1549,63 @@ bool RuleM::predictHeadQuery(int tail, TripleStorage& triples, QueryResults& hea
 	tempResult1.clear();
 	
 	// Get predictions from first member rule
-	std::cout << "[RuleM::predictHeadQuery] Querying member rule 1" << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::predictHeadQuery] Querying member rule 1" << std::endl;
+	}
 	if (!memberRules[0]->predictHeadQuery(tail, triples, tempResult1, ManySet())) {
-		std::cout << "[RuleM::predictHeadQuery] Member rule 1 returned no results" << std::endl;
+		if (RuleMDebug) {
+			std::cout << "[RuleM::predictHeadQuery] Member rule 1 returned no results" << std::endl;
+		}
 		return false;
 	}
-	std::cout << "[RuleM::predictHeadQuery] Member rule 1 returned " << tempResult1.getCandsOrdered().size() << " candidates" << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::predictHeadQuery] Member rule 1 returned " << tempResult1.getCandsOrdered().size() << " candidates" << std::endl;
+	}
 	
 	// Intersect with each subsequent member rule
 	for (size_t i = 1; i < memberRules.size(); i++) {
-		std::cout << "[RuleM::predictHeadQuery] Querying member rule " << (i+1) << std::endl;
+		if (RuleMDebug) {
+			std::cout << "[RuleM::predictHeadQuery] Querying member rule " << (i+1) << std::endl;
+		}
 		QueryResults tempResult2(headResults);
 		tempResult2.clear();
 		
 		// Get predictions from current member
 		if (!memberRules[i]->predictHeadQuery(tail, triples, tempResult2, ManySet())) {
-			std::cout << "[RuleM::predictHeadQuery] Member rule " << (i+1) << " returned no results" << std::endl;
+			if (RuleMDebug) {
+				std::cout << "[RuleM::predictHeadQuery] Member rule " << (i+1) << " returned no results" << std::endl;
+			}
 			return false;
 		}
-		std::cout << "[RuleM::predictHeadQuery] Member rule " << (i+1) << " returned " << tempResult2.getCandsOrdered().size() << " candidates" << std::endl;
+		if (RuleMDebug) {
+			std::cout << "[RuleM::predictHeadQuery] Member rule " << (i+1) << " returned " << tempResult2.getCandsOrdered().size() << " candidates" << std::endl;
+		}
 		
 		// Intersect results
 		QueryResults intersected(headResults);
 		intersected.clear();
 		intersectQueryResults(tempResult1, tempResult2, intersected);
-		std::cout << "[RuleM::predictHeadQuery] After intersection: " << intersected.getCandsOrdered().size() << " candidates remain" << std::endl;
+		if (RuleMDebug) {
+			std::cout << "[RuleM::predictHeadQuery] After intersection: " << intersected.getCandsOrdered().size() << " candidates remain" << std::endl;
+		}
 		
 		// Move intersected results to tempResult1 for next iteration
 		tempResult1 = std::move(intersected);
 		
 		// Early termination if intersection is empty
 		if (tempResult1.empty()) {
-			std::cout << "[RuleM::predictHeadQuery] Intersection is empty, early termination" << std::endl;
+			if (RuleMDebug) {
+				std::cout << "[RuleM::predictHeadQuery] Intersection is empty, early termination" << std::endl;
+			}
 			return false;
 		}
 	}
 	
 	// Apply filter and add final results to headResults
 	auto& finalCands = tempResult1.getCandsOrdered();
-	std::cout << "[RuleM::predictHeadQuery] Applying filter to " << finalCands.size() << " final candidates" << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::predictHeadQuery] Applying filter to " << finalCands.size() << " final candidates" << std::endl;
+	}
 	int addedCount = 0;
 	for (int cand : finalCands) {
 		if (!filterSet.contains(cand)) {
@@ -1637,13 +1613,17 @@ bool RuleM::predictHeadQuery(int tail, TripleStorage& triples, QueryResults& hea
 			addedCount++;
 		}
 	}
-	std::cout << "[RuleM::predictHeadQuery] Added " << addedCount << " candidates to results" << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::predictHeadQuery] Added " << addedCount << " candidates to results" << std::endl;
+	}
 	
 	return !headResults.empty();
 }
 
 bool RuleM::predictTailQuery(int head, TripleStorage& triples, QueryResults& tailResults, ManySet filterSet) {
-	std::cout << "[RuleM::predictTailQuery] Starting with " << memberRules.size() << " member rules, head=" << head << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::predictTailQuery] Starting with " << memberRules.size() << " member rules, head=" << head << std::endl;
+	}
 	
 	if (memberRules.empty()) return false;
 	
@@ -1652,12 +1632,18 @@ bool RuleM::predictTailQuery(int head, TripleStorage& triples, QueryResults& tai
 	tempResult1.clear();
 		
 	// Get predictions from first member rule
-	std::cout << "[RuleM::predictTailQuery] Querying member rule 1" << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::predictTailQuery] Querying member rule 1" << std::endl;
+	}
 	if (!memberRules[0]->predictTailQuery(head, triples, tempResult1, ManySet())) {
-		std::cout << "[RuleM::predictTailQuery] Member rule 1 returned no results" << std::endl;
+		if (RuleMDebug) {
+			std::cout << "[RuleM::predictTailQuery] Member rule 1 returned no results" << std::endl;
+		}
 		return false;
 	}
-	std::cout << "[RuleM::predictTailQuery] Member rule 1 returned " << tempResult1.getCandsOrdered().size() << " candidates" << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::predictTailQuery] Member rule 1 returned " << tempResult1.getCandsOrdered().size() << " candidates" << std::endl;
+	}
 	
 	// Intersect with each subsequent member rule
 	for (size_t i = 1; i < memberRules.size(); i++) {
@@ -1695,21 +1681,29 @@ bool RuleM::predictTailQuery(int head, TripleStorage& triples, QueryResults& tai
 }
 
 void RuleM::materialize(TripleStorage& triples, std::unordered_set<Triple>& preds) {
-	std::cout << "[RuleM::materialize] Starting with " << memberRules.size() << " member rules" << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::materialize] Starting with " << memberRules.size() << " member rules" << std::endl;
+	}
 	
 	if (memberRules.empty()) return;
 	
 	// Get materialization from first member
 	std::unordered_set<Triple> tempPreds1;
 	memberRules[0]->materialize(triples, tempPreds1);
-	std::cout << "[RuleM::materialize] Member rule 1 produced " << tempPreds1.size() << " triples" << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::materialize] Member rule 1 produced " << tempPreds1.size() << " triples" << std::endl;
+	}
 	
 	// Intersect with each subsequent member
 	for (size_t i = 1; i < memberRules.size(); i++) {
-		std::cout << "[RuleM::materialize] Processing member rule " << (i+1) << std::endl;
+		if (RuleMDebug) {
+			std::cout << "[RuleM::materialize] Processing member rule " << (i+1) << std::endl;
+		}
 		std::unordered_set<Triple> tempPreds2;
 		memberRules[i]->materialize(triples, tempPreds2);
-		std::cout << "[RuleM::materialize] Member rule " << (i+1) << " produced " << tempPreds2.size() << " triples" << std::endl;
+		if (RuleMDebug) {
+			std::cout << "[RuleM::materialize] Member rule " << (i+1) << " produced " << tempPreds2.size() << " triples" << std::endl;
+		}
 		
 		// Compute intersection
 		std::unordered_set<Triple> intersected;
@@ -1718,19 +1712,25 @@ void RuleM::materialize(TripleStorage& triples, std::unordered_set<Triple>& pred
 				intersected.insert(triple);
 			}
 		}
-		std::cout << "[RuleM::materialize] After intersection: " << intersected.size() << " triples remain" << std::endl;
+		if (RuleMDebug) {
+			std::cout << "[RuleM::materialize] After intersection: " << intersected.size() << " triples remain" << std::endl;
+		}
 		
 		tempPreds1 = std::move(intersected);
 		
 		// Early termination if empty
 		if (tempPreds1.empty()) {
-			std::cout << "[RuleM::materialize] Intersection is empty, early termination" << std::endl;
+			if (RuleMDebug) {
+				std::cout << "[RuleM::materialize] Intersection is empty, early termination" << std::endl;
+			}
 			return;
 		}
 	}
 	
 	// Add final intersected predictions to output
-	std::cout << "[RuleM::materialize] Adding " << tempPreds1.size() << " final triples to output" << std::endl;
+	if (RuleMDebug) {
+		std::cout << "[RuleM::materialize] Adding " << tempPreds1.size() << " final triples to output" << std::endl;
+	}
 	for (const auto& triple : tempPreds1) {
 		preds.insert(triple);
 	}

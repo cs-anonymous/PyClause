@@ -353,8 +353,6 @@ class RuleM: public Rule
 public:
 	RuleM(std::vector<std::unique_ptr<Rule>>& memberRules);
 	~RuleM() override;
-	// Print rule information
-	void print();
 	// Predict by intersecting results from all member rules
 	bool predictHeadQuery(int tail, TripleStorage& triples, QueryResults& headResults, ManySet filterSet=ManySet());
 	bool predictTailQuery(int head, TripleStorage& triples, QueryResults& tailResults, ManySet filterSet=ManySet());
@@ -364,10 +362,6 @@ public:
 	std::string computeRuleString(Index* index);
 	// Predict triple by checking all member rules
 	bool predictTriple(int head, int tail, TripleStorage& triples, QueryResults& qResults, RuleGroundings* groundings);
-	
-	// Hash functions - bodyhash is computed in constructor
-	long long getBodyHash() { return bodyhash; }
-	void computeBodyHash() { /* Already computed in constructor */ }
 	
 	// Override prediction capability setters
 	void setPredictHead(bool ind) { predictHead = ind; }

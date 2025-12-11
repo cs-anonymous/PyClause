@@ -39,6 +39,7 @@ public:
     void setCreateRuleXXd(bool ind);
     void setCreateRuleXXc(bool ind);
     void setCreateRuleM(bool ind);
+    void setRuleMDebug(bool ind);
     void setNumUnseen(int val, std::string type);
 
     void setMinCorrect(int val, std::string type);
