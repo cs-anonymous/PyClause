@@ -28,6 +28,8 @@ public:
     std::vector<std::unique_ptr<Rule>>& getRules();
     std::unordered_map<int, std::set<Rule*,compareRule>>& getRelToRules();
     std::set<Rule*, compareRule>& getRelRules(int relation);
+    // 1-based index: line number -> Rule* (index 0 is unused)
+    const std::vector<Rule*>& getLineToRulePtrs() const;
     void clearAll();
     
 
@@ -40,6 +42,8 @@ private:
     std::vector<std::unique_ptr<Rule>> rules;
     // from here rule application is performed; application is always based on a target relation
     std::unordered_map<int, std::set<Rule*,compareRule>> relToRules;
+    // line number (1-based) -> Rule* mapping (index 0 unused)
+    std::vector<Rule*> lineToRulePtrs;
     std::shared_ptr<Index> index;
     // TODO you dont really need a shared pointer here; but at least options should be global 
     std::shared_ptr<RuleFactory> ruleFactory;

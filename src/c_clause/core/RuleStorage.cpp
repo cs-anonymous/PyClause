@@ -16,6 +16,7 @@ RuleStorage::RuleStorage(std::shared_ptr<Index> index, std::shared_ptr<RuleFacto
 
 // reads format outputted by AnyBURL
 void RuleStorage::readAnyTimeFormat(std::string path, bool exact){
+    lineToRulePtrs.clear();
     std::ifstream file(path);
     if (!file.is_open()) {
         throw std::ios_base::failure("Could not open rule file: " + path + " is the path correct?");
@@ -33,13 +34,13 @@ void RuleStorage::readAnyTimeFormat(std::string path, bool exact){
 
     std::string line;
     int currID = 0;
-    int currLine = 0;
+    int currLine = 1;
     
     while (!util::safeGetline(file, line).eof()){
         if (currLine % 1000000 == 0 && verbose && currLine > 0){
             std::cout << "...parsed " << currLine << " rules " << std::endl;
         }
-        bool added = addAnyTimeRuleLine(line, currID, false);
+        bool added = addAnyTimeRuleLine(line, currLine, false);
         if (added){
             currID += 1;
         }
@@ -78,6 +79,9 @@ void RuleStorage::readAnyTimeParFormat(std::string path, bool exact, int numThre
 
     // we not need all of them 
     rules_ptr.resize(ruleLines.size());
+    // 1-based index: line number -> Rule*
+    lineToRulePtrs.clear();
+    lineToRulePtrs.resize(ruleLines.size() + 1, nullptr);
 
     #pragma omp parallel num_threads(numThreads)
     {
@@ -127,17 +131,19 @@ void RuleStorage::readAnyTimeParFormat(std::string path, bool exact, int numThre
         }
     }
     // need this for correctly setting ID's
-    // e.g. we want ID's to be the line order (minus skipped)
+    // e.g. we want ID's to be the line number in the input file (1-based)
     // to be consistent when rules are written and loaded again
     std::cout<< "Indexing rules.." <<std::endl;
     int currID = 0;
     for (int i=0; i<rules_ptr.size(); i++){
         if (rules_ptr[i]){
-            rules_ptr[i]->setID(currID);
+            int lineNumber = i + 1;
+            rules_ptr[i]->setID(lineNumber);
             // must be done after id is set
             relToRules[rules_ptr[i]->getTargetRel()].insert(rules_ptr[i].get());
             currID += 1;
             rules.push_back(std::move(rules_ptr[i]));
+            lineToRulePtrs[lineNumber] = rules.back().get();
         }
     }
     std::cout<<"Loaded and indexed "<<currID<<" rules."<<std::endl;
@@ -145,13 +151,14 @@ void RuleStorage::readAnyTimeParFormat(std::string path, bool exact, int numThre
 
 // ruleStrings is a line num_pred/t support/t conf/t ruleString
 void RuleStorage::readAnyTimeFromVec(std::vector<std::string>& ruleStrings, bool exact){
+    lineToRulePtrs.clear();
     int currID = 0;
     for (int i=0; i<ruleStrings.size(); i++){
          if (i%1000000==0 && verbose && i>0){
                 std::cout<<"...serialized "<<i<<" rules "<<std::endl;
         }
         std::string stringLine = ruleStrings[i];
-        bool added = addAnyTimeRuleLine(stringLine, currID, exact);
+        bool added = addAnyTimeRuleLine(stringLine, i + 1, exact);
         if (added){
             currID += 1;
         }
@@ -160,6 +167,7 @@ void RuleStorage::readAnyTimeFromVec(std::vector<std::string>& ruleStrings, bool
 } 
 
 void RuleStorage::readAnyTimeFromVecs(std::vector<std::string>& ruleStrings, std::vector<std::pair<int,int>> stats, bool exact){
+    lineToRulePtrs.clear();
     if (ruleStrings.size() != stats.size()){
         throw std::runtime_error(
             "The rule stats input list must have same length of rule string list when loading rules with stats."
@@ -173,7 +181,7 @@ void RuleStorage::readAnyTimeFromVecs(std::vector<std::string>& ruleStrings, std
         std::string stringRule = ruleStrings[i];
         int numPred = stats[i].first;
         int numTrue = stats[i].second;
-        bool added = addAnyTimeRuleWithStats(stringRule, currID, numPred, numTrue, exact);
+        bool added = addAnyTimeRuleWithStats(stringRule, i + 1, numPred, numTrue, exact);
         if (added){
             currID += 1;
         }
@@ -210,6 +218,10 @@ bool RuleStorage::addAnyTimeRuleWithStats(std::string ruleString, int id, int nu
         rule->setID(id);
         rule->setStats(numPred, numTrue, exact);
         relToRules[rule->getTargetRel()].insert(rule.get());
+        if (id >= static_cast<int>(lineToRulePtrs.size())){
+            lineToRulePtrs.resize(id + 1, nullptr);
+        }
+        lineToRulePtrs[id] = rule.get();
         rules.push_back(std::move(rule));
         return true;
     } else {
@@ -230,7 +242,12 @@ std::vector<std::unique_ptr<Rule>>& RuleStorage::getRules(){
     return rules;
  }
 
+const std::vector<Rule*>& RuleStorage::getLineToRulePtrs() const{
+    return lineToRulePtrs;
+}
+
 void RuleStorage::clearAll(){
     rules.clear();
     relToRules.clear();
+    lineToRulePtrs.clear();
 }
