@@ -6,6 +6,7 @@
 #include <iostream>
 #include <functional>
 #include <chrono>
+#include <cmath>
 
 
 #include "Application.h"
@@ -251,10 +252,25 @@ void ApplicationHandler::calculateQueryResults(TripleStorage& target, TripleStor
 }
 
 void ApplicationHandler::sortAndProcessNoisy(std::vector<std::pair<int,double>>& candScoresToSort, QueryResults& qResults, TripleStorage& data){
-    // noisyor scoring is already performed in QueryResults
-
-   std::unordered_map<int, double>& candScores = qResults.getCandScores();
-   candScoresToSort.assign(candScores.begin(), candScores.end()); 
+    // compute noisyor score from all applied rules: sort surprisal desc and apply exp decay
+    // w0 + w1 * e^-τ + w2 * e^-2τ ...
+    NodeToPredRules& candRules = qResults.getCandRules();
+    candScoresToSort.clear();
+    candScoresToSort.reserve(candRules.size());
+    for (auto& candPair : candRules){
+        std::vector<double> surprisals;
+        surprisals.reserve(candPair.second.size());
+        for (Rule* rule : candPair.second){
+            surprisals.push_back(-std::log(1 - rule->getConfidence()));
+        }
+        std::sort(surprisals.begin(), surprisals.end(), std::greater<double>());
+        double surprisal = 0.0;
+        double tau = rank_aggrSharpness;
+        for (size_t i=0; i<surprisals.size(); i++){
+            surprisal += surprisals[i] * std::exp(-tau * static_cast<double>(i));
+        }
+        candScoresToSort.emplace_back(candPair.first, surprisal);
+    }
 
    if (rank_tie_handling=="random"){
      std::sort(
@@ -282,9 +298,9 @@ void ApplicationHandler::sortAndProcessNoisy(std::vector<std::pair<int,double>>&
     throw std::runtime_error("Tie handling type not known. Please set to 'random' or 'frequency'");
    }
 
-for (auto& pair: candScoresToSort){
-    pair.second = 1 - std::exp(-1*pair.second);
-}
+    for (auto& pair: candScoresToSort){
+        pair.second = 1 - std::exp(-1*pair.second);
+    }
 
 }
 
@@ -536,6 +552,14 @@ void ApplicationHandler::setAggregationFunc(std::string func){
         throw std::runtime_error("The aggregation function value is not known, select from 'noisyor' or 'maxplus' found value: " + func);
     }
     rank_aggrFunc = func;
+}
+
+void ApplicationHandler::setAggregationSharpness(double val){
+    rank_aggrSharpness = val;
+}
+
+void ApplicationHandler::setDependencyMethod(std::string method){
+    rank_dependencyMethod = method;
 }
 
 void ApplicationHandler::setSaveCandidateRules(bool ind){

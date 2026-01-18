@@ -129,6 +129,10 @@ ranking_handler:
   # the noisy-or sorting is based on -\sum_i(log(1-conf_i)) and transformed
   # before outputted; this mitigates floating point considerations 
   aggregation_function: "maxplus"
+  # controls the sharpness used by aggregation (0 = default/off)
+  aggregation_sharpness: 0
+  # dependency handling method: "none" (default)
+  dependency_method: "none"
 
   # dont add candidate proposals c for queries (h, r, ?) or (?, r, t) if
   # (h, r, c) or (c, r, t) exists in the KG given by the "data" argument of the loader

@@ -46,6 +46,8 @@ public:
     void setFilterWTrain(bool ind);
     void setFilterWtarget(bool ind);
     void setAggregationFunc(std::string func);
+    void setAggregationSharpness(double val);
+    void setDependencyMethod(std::string method);
     void setSaveCandidateRules(bool ind);
     void setPerformAggregation(bool ind);
     void setDiscAtLeast(int num);
@@ -112,6 +114,8 @@ private:
     bool rank_filterWtarget=true;
     // aggregation function in {"maxplus"}
     std::string rank_aggrFunc="maxplus";
+    double rank_aggrSharpness=0.0;
+    std::string rank_dependencyMethod="none";
 
     // track for each candidate the predicting rules (saved in e.g. headQcandsRules )
     bool saveCandidateRules=false;
