@@ -30,6 +30,7 @@ public:
     std::set<Rule*, compareRule>& getRelRules(int relation);
     // 1-based index: line number -> Rule* (index 0 is unused)
     const std::vector<Rule*>& getLineToRulePtrs() const;
+    void loadDependency(std::string path, int numThreads);
     void clearAll();
     
 
@@ -44,6 +45,8 @@ private:
     std::unordered_map<int, std::set<Rule*,compareRule>> relToRules;
     // line number (1-based) -> Rule* mapping (index 0 unused)
     std::vector<Rule*> lineToRulePtrs;
+    // owns Dependency objects used by rules
+    std::vector<std::unique_ptr<Dependency>> dependency;
     std::shared_ptr<Index> index;
     // TODO you dont really need a shared pointer here; but at least options should be global 
     std::shared_ptr<RuleFactory> ruleFactory;

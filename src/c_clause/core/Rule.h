@@ -11,12 +11,23 @@
 #include <array>
 #include <set>
 
-
 #include "Types.h"
 #include "TripleStorage.h"
 #include "ManySet.h"
 #include "QueryResults.h"
 #include "Index.h"
+
+class Dependency {
+public:
+	int i;
+	int j;
+	int predicted;
+	int cpredicted;
+	double lift;
+	double conf;
+	double conf1;
+	double conf2;
+};
 
 
 class Rule 
@@ -90,6 +101,7 @@ public:
 	bool predictHead;
 	bool predictTail;
 	const char* type;
+	std::vector<Dependency*> dependency;
 	
 protected:
 	int ID;

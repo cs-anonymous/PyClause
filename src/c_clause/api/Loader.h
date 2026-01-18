@@ -34,6 +34,7 @@ public:
     void loadRules(std::string rulePath);
     void loadRules(std::vector<std::string> ruleStatsStrings);
     void loadRules(std::vector<std::string> ruleStrings, std::vector<std::pair<int,int>> ruleStats);
+    void loadDependency(std::string dependencyPath);
 
     void writeRules(std::string path);
     std::vector<std::string> getRuleLines();

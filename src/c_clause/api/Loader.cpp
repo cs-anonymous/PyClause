@@ -50,6 +50,13 @@ void Loader::loadRules(std::string path){
     loadedRules = true;
 }
 
+void Loader::loadDependency(std::string path){
+    if (!loadedRules){
+        throw std::runtime_error("You must load rules before loading dependencies.");
+    }
+    rules->loadDependency(path, this->numThr);
+}
+
 
 void Loader::loadRules(std::vector<std::string> ruleStrings){
     rules->clearAll();

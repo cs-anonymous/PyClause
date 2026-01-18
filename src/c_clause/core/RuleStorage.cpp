@@ -3,14 +3,40 @@
 #include "Globals.h"
 #include "Rule.h"
 #include "Types.h"
+#include "Util.hpp"
 
 #include <fstream>
 #include <string>
+#include <utility>
+#include <map>
 
 
 RuleStorage::RuleStorage(std::shared_ptr<Index> index, std::shared_ptr<RuleFactory> ruleFactory){
     this->ruleFactory = ruleFactory;
     this->index = index;
+}
+
+namespace {
+void printRuleTypeStats(const std::vector<std::unique_ptr<Rule>>& rules){
+    if (rules.empty()){
+        std::cout << "Rule types: none." << std::endl;
+        return;
+    }
+    std::map<std::string, int> counts;
+    for (const auto& rule : rules){
+        if (!rule){
+            continue;
+        }
+        const char* type = rule->type;
+        std::string key = type ? std::string(type) : std::string("unknown");
+        counts[key] += 1;
+    }
+    std::cout << "Rule types:";
+    for (const auto& kv : counts){
+        std::cout << " " << kv.first << "=" << kv.second;
+    }
+    std::cout << std::endl;
+}
 }
 
 
@@ -47,6 +73,7 @@ void RuleStorage::readAnyTimeFormat(std::string path, bool exact){
         currLine += 1;
     }
     std::cout << "Loaded " << currID << " rules." << std::endl;
+    printRuleTypeStats(rules);
 }
 
 void RuleStorage::readAnyTimeParFormat(std::string path, bool exact, int numThreads){
@@ -147,6 +174,7 @@ void RuleStorage::readAnyTimeParFormat(std::string path, bool exact, int numThre
         }
     }
     std::cout<<"Loaded and indexed "<<currID<<" rules."<<std::endl;
+    printRuleTypeStats(rules);
 }
 
 // ruleStrings is a line num_pred/t support/t conf/t ruleString
@@ -164,6 +192,7 @@ void RuleStorage::readAnyTimeFromVec(std::vector<std::string>& ruleStrings, bool
         }
     }
     std::cout<<"Loaded "<<currID<<" rules."<<std::endl;
+    printRuleTypeStats(rules);
 } 
 
 void RuleStorage::readAnyTimeFromVecs(std::vector<std::string>& ruleStrings, std::vector<std::pair<int,int>> stats, bool exact){
@@ -187,6 +216,7 @@ void RuleStorage::readAnyTimeFromVecs(std::vector<std::string>& ruleStrings, std
         }
     }
     std::cout<<"Loaded "<<currID<<" rules."<<std::endl;
+    printRuleTypeStats(rules);
 
 }
 
@@ -246,8 +276,151 @@ const std::vector<Rule*>& RuleStorage::getLineToRulePtrs() const{
     return lineToRulePtrs;
 }
 
+void RuleStorage::loadDependency(std::string path, int numThreads){
+    if (lineToRulePtrs.empty()){
+        throw std::runtime_error("Please load rules before loading dependencies.");
+    }
+
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        throw std::ios_base::failure("Could not open dependency file: " + path + " is the path correct?");
+    }
+
+    if (verbose){
+        std::cout << "Loading dependencies from " + path << std::endl;
+    }
+
+    std::vector<std::string> depLines;
+    std::string line;
+    while (!util::safeGetline(file, line).eof()){
+        if (!line.empty()){
+            depLines.push_back(line);
+        }
+    }
+    file.close();
+
+    for (Rule* r : lineToRulePtrs){
+        if (r){
+            r->dependency.clear();
+        }
+    }
+    dependency.clear();
+    dependency.reserve(depLines.size());
+
+    std::vector<std::unique_ptr<Dependency>> deps;
+    deps.resize(depLines.size());
+
+    int invalidFormat = 0;
+    int parseError = 0;
+    int sameId = 0;
+    // long long parsedCount = 0;
+
+    #pragma omp parallel num_threads(numThreads)
+    {
+        #pragma omp for
+        for (int i=0; i<depLines.size(); i++){
+            // long long currParsed = 0;
+            // #pragma omp atomic capture
+            // {
+            //     parsedCount += 1;
+            //     currParsed = parsedCount;
+            // }
+            // if (verbose && currParsed % 10000000 == 0){
+            //     #pragma omp critical
+            //     {
+            //         std::cout << "parsed " << currParsed / 10000000 << " million dependencies..." << std::endl;
+            //     }
+            // }
+            std::vector<std::string> splitline = util::split(depLines[i], '\t');
+            if (splitline.size()!=8){
+                #pragma omp atomic
+                invalidFormat += 1;
+                continue;
+            }
+            try {
+                int predicted = std::stoi(splitline[0]);
+                int cpredicted = std::stoi(splitline[1]);
+                double conf = std::stod(splitline[2]);
+                double lift = std::stod(splitline[3]);
+                double conf1 = std::stod(splitline[4]);
+                double conf2 = std::stod(splitline[5]);
+                int id1 = std::stoi(splitline[6]);
+                int id2 = std::stoi(splitline[7]);
+
+                if (id1 == id2){
+                    #pragma omp atomic
+                    sameId += 1;
+                    continue;
+                }
+                if (id1 > id2){
+                    std::swap(id1, id2);
+                    std::swap(conf1, conf2);
+                }
+
+                auto dep = std::make_unique<Dependency>();
+                dep->i = id1;
+                dep->j = id2;
+                dep->predicted = predicted;
+                dep->cpredicted = cpredicted;
+                dep->conf = conf;
+                dep->lift = lift;
+                dep->conf1 = conf1;
+                dep->conf2 = conf2;
+                deps[i] = std::move(dep);
+            } catch (...) {
+                #pragma omp atomic
+                parseError += 1;
+                continue;
+            }
+        }
+    }
+
+    int loaded = 0;
+    int skipped = 0;
+    int outOfRange = 0;
+    int missingRule = 0;
+    for (int i=0; i<deps.size(); i++){
+        if (!deps[i]){
+            continue;
+        }
+        Dependency* depPtr = deps[i].get();
+        if (depPtr->i >= static_cast<int>(lineToRulePtrs.size()) || depPtr->j >= static_cast<int>(lineToRulePtrs.size())){
+            skipped += 1;
+            outOfRange += 1;
+            continue;
+        }
+        Rule* r1 = lineToRulePtrs[depPtr->i];
+        Rule* r2 = lineToRulePtrs[depPtr->j];
+        if (!r1 || !r2){
+            skipped += 1;
+            missingRule += 1;
+            continue;
+        }
+        r1->dependency.push_back(depPtr);
+        r2->dependency.push_back(depPtr);
+        dependency.push_back(std::move(deps[i]));
+        loaded += 1;
+    }
+
+    if (verbose){
+        std::cout << "Loaded " << loaded << " dependency";
+        int totalSkipped = invalidFormat + parseError + sameId + outOfRange + missingRule;
+        if (totalSkipped > 0){
+            std::cout << " (skipped " << totalSkipped
+                      << ", format=" << invalidFormat
+                      << ", parse=" << parseError
+                      << ", same_id=" << sameId
+                      << ", out_of_range=" << outOfRange
+                      << ", missing_rule=" << missingRule
+                      << ")";
+        }
+        std::cout << "." << std::endl;
+    }
+}
+
 void RuleStorage::clearAll(){
     rules.clear();
     relToRules.clear();
     lineToRulePtrs.clear();
+    dependency.clear();
 }
