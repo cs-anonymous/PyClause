@@ -1,4 +1,6 @@
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 #include <omp.h>
 #include <memory>
 #include <algorithm>
@@ -258,11 +260,92 @@ void ApplicationHandler::sortAndProcessNoisy(std::vector<std::pair<int,double>>&
     candScoresToSort.clear();
     candScoresToSort.reserve(candRules.size());
     for (auto& candPair : candRules){
-        std::vector<double> surprisals;
-        surprisals.reserve(candPair.second.size());
+        std::unordered_map<int, Rule*> appliedById;
+        std::vector<Rule*> appliedRules;
+        appliedRules.reserve(candPair.second.size());
         for (Rule* rule : candPair.second){
-            surprisals.push_back(-std::log(1 - rule->getConfidence()));
+            int rid = rule->getID();
+            if (appliedById.find(rid) == appliedById.end()){
+                appliedById[rid] = rule;
+                appliedRules.push_back(rule);
+            }
         }
+
+        std::unordered_map<Rule*, double> ruleSurprisal;
+        ruleSurprisal.reserve(appliedRules.size());
+        for (Rule* rule : appliedRules){
+            ruleSurprisal[rule] = -std::log(1 - rule->getConfidence());
+        }
+
+        std::unordered_set<Rule*> ignoredRules;
+        if (rank_dependencyMethod == "positive" || rank_dependencyMethod == "negative"){
+            bool positive = (rank_dependencyMethod == "positive");
+            struct DepEdge {
+                Rule* a;
+                Rule* b;
+                double lift;
+            };
+            std::vector<DepEdge> depEdges;
+            depEdges.reserve(appliedRules.size());
+
+            for (Rule* rule : appliedRules){
+                int rid = rule->getID();
+                for (const auto& depPair : rule->dependency){
+                    int otherId = depPair.first;
+                    Dependency* dep = depPair.second;
+                    if (!dep){
+                        continue;
+                    }
+                    if (dep->i != rid){
+                        continue;
+                    }
+                    if (positive && dep->lift <= 0){
+                        continue;
+                    }
+                    if (!positive && dep->lift >= 0){
+                        continue;
+                    }
+                    auto itOther = appliedById.find(otherId);
+                    if (itOther == appliedById.end()){
+                        continue;
+                    }
+                    depEdges.push_back({rule, itOther->second, dep->lift});
+                }
+            }
+
+            std::sort(depEdges.begin(), depEdges.end(), [](const DepEdge& a, const DepEdge& b) {
+                return std::abs(a.lift) > std::abs(b.lift);
+            });
+
+            for (const auto& edge : depEdges){
+                Rule* rule = edge.a;
+                Rule* otherRule = edge.b;
+                if (ignoredRules.find(rule) != ignoredRules.end() || ignoredRules.find(otherRule) != ignoredRules.end()){
+                    continue;
+                }
+                double sA = ruleSurprisal[rule];
+                double sB = ruleSurprisal[otherRule];
+                Rule* larger = (sA >= sB) ? rule : otherRule;
+                Rule* smaller = (sA >= sB) ? otherRule : rule;
+                if (ignoredRules.find(smaller) != ignoredRules.end()){
+                    continue;
+                }
+                if (positive){
+                    ruleSurprisal[larger] += ruleSurprisal[smaller];
+                }
+                ignoredRules.insert(smaller);
+            }
+        }
+
+        std::vector<double> surprisals;
+        surprisals.reserve(appliedRules.size());
+        for (Rule* rule : appliedRules){
+            if (ignoredRules.find(rule) != ignoredRules.end()){
+                continue;
+            }
+            surprisals.push_back(ruleSurprisal[rule]);
+        }
+
         std::sort(surprisals.begin(), surprisals.end(), std::greater<double>());
         double surprisal = 0.0;
         double tau = rank_aggrSharpness;

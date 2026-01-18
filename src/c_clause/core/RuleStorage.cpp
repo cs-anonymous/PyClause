@@ -310,11 +310,15 @@ void RuleStorage::loadDependency(std::string path, int numThreads){
     std::vector<std::unique_ptr<Dependency>> deps;
     deps.resize(depLines.size());
 
-    int invalidFormat = 0;
     int parseError = 0;
-    int sameId = 0;
+    int invalidFormat = 0;
+    int outOfRange = 0;
+    int missingRule = 0;
     // long long parsedCount = 0;
 
+    if (verbose){
+        std::cout << "Starting to parse " << depLines.size() << " dependency lines using " << numThreads << " threads." << std::endl;
+    }
     #pragma omp parallel num_threads(numThreads)
     {
         #pragma omp for
@@ -325,10 +329,10 @@ void RuleStorage::loadDependency(std::string path, int numThreads){
             //     parsedCount += 1;
             //     currParsed = parsedCount;
             // }
-            // if (verbose && currParsed % 10000000 == 0){
+            // if (verbose && currParsed % 1000000 == 0){
             //     #pragma omp critical
             //     {
-            //         std::cout << "parsed " << currParsed / 10000000 << " million dependencies..." << std::endl;
+            //         std::cout << "parsed " << currParsed / 1000000 << " million dependencies..." << std::endl;
             //     }
             // }
             std::vector<std::string> splitline = util::split(depLines[i], '\t');
@@ -348,13 +352,23 @@ void RuleStorage::loadDependency(std::string path, int numThreads){
                 int id2 = std::stoi(splitline[7]);
 
                 if (id1 == id2){
-                    #pragma omp atomic
-                    sameId += 1;
                     continue;
                 }
                 if (id1 > id2){
                     std::swap(id1, id2);
                     std::swap(conf1, conf2);
+                }
+
+                if (id1 >= static_cast<int>(lineToRulePtrs.size()) || id2 >= static_cast<int>(lineToRulePtrs.size())){
+                    #pragma omp atomic
+                    outOfRange += 1;
+                    continue;
+                }
+                Rule* r1 = lineToRulePtrs[id1];
+                if (!r1){
+                    #pragma omp atomic
+                    missingRule += 1;
+                    continue;
                 }
 
                 auto dep = std::make_unique<Dependency>();
@@ -367,6 +381,12 @@ void RuleStorage::loadDependency(std::string path, int numThreads){
                 dep->conf1 = conf1;
                 dep->conf2 = conf2;
                 deps[i] = std::move(dep);
+
+                #pragma omp critical
+                {
+                    r1->dependency[id2] = deps[i].get();
+                    dependency.push_back(std::move(deps[i]));
+                }
             } catch (...) {
                 #pragma omp atomic
                 parseError += 1;
@@ -375,43 +395,15 @@ void RuleStorage::loadDependency(std::string path, int numThreads){
         }
     }
 
-    int loaded = 0;
-    int skipped = 0;
-    int outOfRange = 0;
-    int missingRule = 0;
-    for (int i=0; i<deps.size(); i++){
-        if (!deps[i]){
-            continue;
-        }
-        Dependency* depPtr = deps[i].get();
-        if (depPtr->i >= static_cast<int>(lineToRulePtrs.size()) || depPtr->j >= static_cast<int>(lineToRulePtrs.size())){
-            skipped += 1;
-            outOfRange += 1;
-            continue;
-        }
-        Rule* r1 = lineToRulePtrs[depPtr->i];
-        Rule* r2 = lineToRulePtrs[depPtr->j];
-        if (!r1 || !r2){
-            skipped += 1;
-            missingRule += 1;
-            continue;
-        }
-        r1->dependency.push_back(depPtr);
-        r2->dependency.push_back(depPtr);
-        dependency.push_back(std::move(deps[i]));
-        loaded += 1;
-    }
-
     if (verbose){
-        std::cout << "Loaded " << loaded << " dependency";
-        int totalSkipped = invalidFormat + parseError + sameId + outOfRange + missingRule;
+        std::cout << "Loaded " << dependency.size() << " dependency";
+        int totalSkipped = outOfRange + missingRule;
         if (totalSkipped > 0){
             std::cout << " (skipped " << totalSkipped
-                      << ", format=" << invalidFormat
-                      << ", parse=" << parseError
-                      << ", same_id=" << sameId
                       << ", out_of_range=" << outOfRange
                       << ", missing_rule=" << missingRule
+                      << ", invalid_format=" << invalidFormat
+                      << ", parse_error=" << parseError
                       << ")";
         }
         std::cout << "." << std::endl;

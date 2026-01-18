@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <optional>
+#include <map>
 #include "stdio.h"
 #include <array>
 #include <set>
@@ -101,7 +102,7 @@ public:
 	bool predictHead;
 	bool predictTail;
 	const char* type;
-	std::vector<Dependency*> dependency;
+	std::map<int, Dependency*> dependency;
 	
 protected:
 	int ID;
