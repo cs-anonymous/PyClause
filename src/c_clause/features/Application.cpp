@@ -9,6 +9,7 @@
 #include <functional>
 #include <chrono>
 #include <cmath>
+#include <sstream>
 
 
 #include "Application.h"
@@ -229,6 +230,189 @@ void ApplicationHandler::calculateQueryResults(TripleStorage& target, TripleStor
             // tie handling, final processing, sorting
             if (performAggregation){
                 (this->*sortAndProcess)(sortedCandScores, qResults, train);
+            }
+
+            if (rank_aggrFunc=="noisyor" && omp_get_thread_num()==0){
+                int* gtBegin = nullptr;
+                int gtLength = 0;
+                dirIsTail ? target.getTforHR(source, rel, gtBegin, gtLength) : target.getHforTR(source, rel, gtBegin, gtLength);
+                std::unordered_set<int> gtSet;
+                gtSet.reserve(gtLength);
+                for (int gi=0; gi<gtLength; gi++){
+                    gtSet.insert(gtBegin[gi]);
+                }
+
+                std::unordered_set<int> allRuleIds;
+                std::vector<int> candidateOrder = qResults.getCandsOrdered();
+                for (int cand : candidateOrder){
+                    auto& rulesForCand = qResults.getRulesForCand(cand);
+                    for (Rule* rule : rulesForCand){
+                        allRuleIds.insert(rule->getID());
+                    }
+                }
+                std::vector<int> allRuleIdsVec(allRuleIds.begin(), allRuleIds.end());
+                std::sort(allRuleIdsVec.begin(), allRuleIdsVec.end());
+
+                Index* index = target.getIndex();
+                std::ostringstream oss;
+                oss << "{\"query\":\"";
+                std::string relStr = index->getStringOfRelId(rel);
+                if (dirIsTail){
+                    std::string srcStr = index->getStringOfNodeId(source);
+                    oss << srcStr << " " << relStr << " ?";
+                }else{
+                    std::string srcStr = index->getStringOfNodeId(source);
+                    oss << "? " << relStr << " " << srcStr;
+                }
+                oss << "\",\"rules\":[";
+                for (size_t i=0; i<allRuleIdsVec.size(); i++){
+                    if (i>0) oss << ",";
+                    oss << allRuleIdsVec[i];
+                }
+                oss << "],\"candidates\":[";
+
+                bool firstCand = true;
+                for (int cand : candidateOrder){
+                    auto& rulesForCand = qResults.getRulesForCand(cand);
+                    std::vector<int> ruleIds;
+                    std::vector<Rule*> appliedRules;
+                    std::unordered_map<int, Rule*> appliedById;
+                    ruleIds.reserve(rulesForCand.size());
+                    appliedRules.reserve(rulesForCand.size());
+                    for (Rule* rule : rulesForCand){
+                        int rid = rule->getID();
+                        if (appliedById.find(rid) == appliedById.end()){
+                            appliedById[rid] = rule;
+                            ruleIds.push_back(rid);
+                            appliedRules.push_back(rule);
+                        }
+                    }
+
+                    std::unordered_map<Rule*, double> ruleSurprisal;
+                    ruleSurprisal.reserve(appliedRules.size());
+                    double originalSurprisal = 0.0;
+                    for (Rule* rule : appliedRules){
+                        double s = -std::log(1 - rule->getConfidence());
+                        ruleSurprisal[rule] = s;
+                        originalSurprisal += s;
+                    }
+
+                    int positiveDep = 0;
+                    int negativeDep = 0;
+                    std::unordered_set<Rule*> ignoredRules;
+                    if (rank_dependencyMethod == "positive" || rank_dependencyMethod == "negative"){
+                        bool positive = (rank_dependencyMethod == "positive");
+                        struct DepEdge { Rule* a; Rule* b; double lift; };
+                        std::vector<DepEdge> depEdges;
+                        depEdges.reserve(appliedRules.size());
+
+                        for (Rule* rule : appliedRules){
+                            int rid = rule->getID();
+                            for (const auto& depPair : rule->dependency){
+                                int otherId = depPair.first;
+                                Dependency* dep = depPair.second;
+                                if (!dep || dep->i != rid){
+                                    continue;
+                                }
+                                if (dep->lift > 0){
+                                    positiveDep += 1;
+                                }else if (dep->lift < 0){
+                                    negativeDep += 1;
+                                }
+                                if (positive && dep->lift <= 0){
+                                    continue;
+                                }
+                                if (!positive && dep->lift >= 0){
+                                    continue;
+                                }
+                                auto itOther = appliedById.find(otherId);
+                                if (itOther == appliedById.end()){
+                                    continue;
+                                }
+                                depEdges.push_back({rule, itOther->second, dep->lift});
+                            }
+                        }
+
+                        std::sort(depEdges.begin(), depEdges.end(), [](const DepEdge& a, const DepEdge& b) {
+                            return std::abs(a.lift) > std::abs(b.lift);
+                        });
+
+                        for (const auto& edge : depEdges){
+                            Rule* rule = edge.a;
+                            Rule* otherRule = edge.b;
+                            if (ignoredRules.find(rule) != ignoredRules.end() || ignoredRules.find(otherRule) != ignoredRules.end()){
+                                continue;
+                            }
+                            double sA = ruleSurprisal[rule];
+                            double sB = ruleSurprisal[otherRule];
+                            Rule* larger = (sA >= sB) ? rule : otherRule;
+                            Rule* smaller = (sA >= sB) ? otherRule : rule;
+                            if (ignoredRules.find(smaller) != ignoredRules.end()){
+                                continue;
+                            }
+                            if (positive){
+                                ruleSurprisal[larger] += ruleSurprisal[smaller];
+                            }
+                            ignoredRules.insert(smaller);
+                        }
+                    }
+
+                    std::vector<double> newRuleSurprisal;
+                    std::vector<double> ruleSurprisalList;
+                    newRuleSurprisal.reserve(appliedRules.size());
+                    ruleSurprisalList.reserve(appliedRules.size());
+                    for (Rule* rule : appliedRules){
+                        double base = -std::log(1 - rule->getConfidence());
+                        ruleSurprisalList.push_back(base);
+                        if (ignoredRules.find(rule) != ignoredRules.end()){
+                            newRuleSurprisal.push_back(0.0);
+                        }else{
+                            newRuleSurprisal.push_back(ruleSurprisal[rule]);
+                        }
+                    }
+
+                    std::vector<double> surprisals;
+                    surprisals.reserve(appliedRules.size());
+                    for (double s : newRuleSurprisal){
+                        if (s > 0){
+                            surprisals.push_back(s);
+                        }
+                    }
+                    std::sort(surprisals.begin(), surprisals.end(), std::greater<double>());
+                    double newSurprisal = 0.0;
+                    double tau = rank_aggrSharpness;
+                    for (size_t i=0; i<surprisals.size(); i++){
+                        newSurprisal += surprisals[i] * std::exp(-tau * static_cast<double>(i));
+                    }
+
+                    if (!firstCand) oss << ",";
+                    firstCand = false;
+                    std::string candStr = index->getStringOfNodeId(cand);
+                    oss << "{\"name\":\"" << candStr << "\",\"rules\":[";
+                    for (size_t i=0; i<ruleIds.size(); i++){
+                        if (i>0) oss << ",";
+                        oss << ruleIds[i];
+                    }
+                    oss << "],\"ruleSurprisal\":[";
+                    for (size_t i=0; i<ruleSurprisalList.size(); i++){
+                        if (i>0) oss << ",";
+                        oss << ruleSurprisalList[i];
+                    }
+                    oss << "],\"newRuleSurprisal\":[";
+                    for (size_t i=0; i<newRuleSurprisal.size(); i++){
+                        if (i>0) oss << ",";
+                        oss << newRuleSurprisal[i];
+                    }
+                    oss << "],\"GT\":" << (gtSet.find(cand)!=gtSet.end() ? "true" : "false");
+                    oss << ",\"positiveDep\":" << positiveDep;
+                    oss << ",\"negativeDep\":" << negativeDep;
+                    oss << ",\"originalSurprisal\":" << originalSurprisal;
+                    oss << ",\"newSurprisal\":" << newSurprisal;
+                    oss << "}";
+                }
+
+                oss << "]}";
+                std::cout << oss.str() << std::endl;
             }
                     
 
