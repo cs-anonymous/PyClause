@@ -6,6 +6,7 @@
 #include <sstream>
 #include <iostream>
 #include <vector>
+#include "xgboost/c_api.h"
 
 
  Loader::Loader(std::map<std::string, std::string> options){
@@ -22,6 +23,13 @@
     setRuleOptions(options, *ruleFactory);
     rules = std::make_unique<RuleStorage>(index, ruleFactory);
  }
+
+Loader::~Loader(){
+    if (xgb_booster && xgb_owns){
+        XGBoosterFree(static_cast<BoosterHandle>(xgb_booster));
+        xgb_booster = nullptr;
+    }
+}
 
 bool Loader::getLoadedData(){
     return loadedData;
@@ -55,6 +63,22 @@ void Loader::loadDependency(std::string path){
         throw std::runtime_error("You must load rules before loading dependencies.");
     }
     rules->loadDependency(path, this->numThr);
+}
+
+void Loader::loadXGBoostModel(std::string modelPath){
+    if (xgb_booster && xgb_owns){
+        XGBoosterFree(static_cast<BoosterHandle>(xgb_booster));
+    }
+    BoosterHandle booster;
+    if (XGBoosterCreate(nullptr, 0, &booster) != 0){
+        throw std::runtime_error(XGBGetLastError());
+    }
+    if (XGBoosterLoadModel(booster, modelPath.c_str()) != 0){
+        XGBoosterFree(booster);
+        throw std::runtime_error(XGBGetLastError());
+    }
+    xgb_booster = booster;
+    xgb_owns = true;
 }
 
 
@@ -261,6 +285,10 @@ RuleFactory& Loader::getRuleFactory(){
 
 std::shared_ptr<Index> Loader::getIndex(){
     return index;
+}
+
+void* Loader::getXGBoostModelHandle(){
+    return xgb_booster;
 }
 
 // loads a file with tab separated string (token) triples

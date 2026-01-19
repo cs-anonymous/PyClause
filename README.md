@@ -24,6 +24,8 @@ PyClause provides a wide range of rule application functionalities such as query
 7. [Colophon](#colophon)
  
 
+before runing: conda install -c conda-forge xgboost
+
 ## Documentation and Examples
 The documentation of the library, rule syntax, data downloads, and a tutorial about rules can be found [here](https://pyclause.readthedocs.io/en/latest/index.html). <br>
 All usable default options for the configuration files can be found in [clause/config-default.yaml](clause/config-default.yaml). <br>

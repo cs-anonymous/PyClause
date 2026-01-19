@@ -18,6 +18,7 @@ class ApplicationHandler
 {
 public:
     ApplicationHandler(){};
+    ~ApplicationHandler();
     // apply all rules for all queries existig in target
     // addFilter can be valid set e.g. , used for additional filtering
     // stores results (cand->Vector<rule*>) in, e.g., this->headQueryResult[rel][source_entity].candToRules
@@ -48,6 +49,9 @@ public:
     void setAggregationFunc(std::string func);
     void setAggregationSharpness(double val);
     void setDependencyMethod(std::string method);
+    void loadXGBoostModel(std::string path);
+    void setXGBoostModelHandle(void* handle);
+    bool hasXGBoostModel();
     void setPositiveWeight(double val);
     void setNegativeWeight(double val);
     void setSaveCandidateRules(bool ind);
@@ -94,6 +98,7 @@ private:
 
     void sortAndProcessNoisy(std::vector<std::pair<int,double>>& candScoresToSort, QueryResults& qResults, TripleStorage& data);
     void sortAndProcessMax(std::vector<std::pair<int,double>>& candScoresToSort, QueryResults& qResults, TripleStorage& data);
+    void sortAndProcessXGBoost(std::vector<std::pair<int,double>>& candScoresToSort, QueryResults& qResults, TripleStorage& data);
     
 
 
@@ -168,6 +173,9 @@ private:
     // for each scores triples the rules and groundings of the rules are collected
     // how many rules is directly affected by score_numTopRules
     bool score_collectGr=false;
+
+    void* xgb_booster = nullptr;
+    bool xgb_owns = false;
 
 };
 

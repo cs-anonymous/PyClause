@@ -27,6 +27,7 @@
 class Loader{
 public:
     Loader(std::map<std::string, std::string> options);
+    ~Loader();
 
     template<class T>
     void loadData(T data, T filter, T target);
@@ -35,6 +36,7 @@ public:
     void loadRules(std::vector<std::string> ruleStatsStrings);
     void loadRules(std::vector<std::string> ruleStrings, std::vector<std::pair<int,int>> ruleStats);
     void loadDependency(std::string dependencyPath);
+    void loadXGBoostModel(std::string modelPath);
 
     void writeRules(std::string path);
     std::vector<std::string> getRuleLines();
@@ -58,6 +60,7 @@ public:
     RuleStorage& getRules();
     RuleFactory& getRuleFactory();
     std::shared_ptr<Index> getIndex();
+    void* getXGBoostModelHandle();
     bool getLoadedData();
     bool getLoadedRules();
     void setNumThreads(int threads);
@@ -84,6 +87,9 @@ private:
     bool verbose = true;
 
     int numThr=1;
+
+    void* xgb_booster = nullptr;
+    bool xgb_owns = false;
 };
 
 template<class T>

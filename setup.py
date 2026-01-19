@@ -5,6 +5,7 @@ import setuptools
 import pybind11
 from glob import glob
 import shutil
+import os
 
 
 # (c) Sylvain Corlay, https://github.com/pybind/python_example
@@ -55,15 +56,25 @@ class BuildExt(build_ext):
       ext.extra_link_args = ["-fopenmp"] # assumes openmp is supported
     build_ext.build_extensions(self)
 
+xgb_include = os.environ.get("XGBOOST_INCLUDE_DIR")
+xgb_lib = os.environ.get("XGBOOST_LIB_DIR")
+include_dirs = [
+  pybind11.get_include(False),
+  pybind11.get_include(True ),
+]
+library_dirs = []
+if xgb_include:
+  include_dirs.append(xgb_include)
+if xgb_lib:
+  library_dirs.append(xgb_lib)
+
 ext_modules = [
-  
   Extension(
     "c_clause", # needs to match module name in cpp bindings
     ["bindings.cpp"] + glob("src/c_clause/core/*.cpp") + glob("src/c_clause/features/*.cpp") + glob("src/c_clause/*.cpp") + glob("src/c_clause/api/*.cpp"),
-    include_dirs=[
-      pybind11.get_include(False),
-      pybind11.get_include(True ),
-    ],
+    include_dirs=include_dirs,
+    library_dirs=library_dirs,
+    libraries=["xgboost"],
     language="c++",
   ),
 ]

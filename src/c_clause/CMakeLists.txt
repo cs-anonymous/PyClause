@@ -20,6 +20,12 @@ add_library(
     core/RuleFactory.cpp api/RankingHandler.cpp api/RulesHandler.cpp api/QAHandler.cpp api/Loader.cpp api/PredictionHandler.cpp
 )
 
+find_library(XGBOOST_LIB xgboost)
+if(XGBOOST_LIB)
+    target_link_libraries(rules_backend PUBLIC ${XGBOOST_LIB})
+    target_link_libraries(tests PRIVATE ${XGBOOST_LIB})
+endif()
+
 add_executable(tests tests.cpp)
 # link rules_backend library into the main executable using modern signature
 target_link_libraries(tests PRIVATE rules_backend)

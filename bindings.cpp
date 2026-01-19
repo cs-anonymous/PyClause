@@ -29,6 +29,7 @@ PYBIND11_MODULE(c_clause, m) {
         .def("write_ranking", &RankingHandler::writeRanking, py::arg("path"), py::arg("loader"))
         .def("write_rules", &RankingHandler::writeRules, py::arg("path"), py::arg("loader"), py::arg("direction"), py::arg("as_string"))
         .def("save_dependency_graph", &RankingHandler::saveDependencyGraph, py::arg("path"))
+        .def("load_xgboost_model", &RankingHandler::loadXGBoostModel, py::arg("path"))
         .def("set_options", &RankingHandler::setOptionsFrontend, py::arg("options"))
         .def(
             "get_ranking",
@@ -147,6 +148,7 @@ PYBIND11_MODULE(c_clause, m) {
             py::arg("rules"), py::arg("stats")
         )
         .def("load_dependency", &Loader::loadDependency, py::arg("dependency"))
+        .def("load_xgboost_model", &Loader::loadXGBoostModel, py::arg("model"))
         .def(
             "load_data",
             [](Loader &self, const std::string &data, const std::string &filter, const std::string &target) { return self.loadData<std::string>(data, filter, target); }, 

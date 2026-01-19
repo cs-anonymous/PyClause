@@ -54,6 +54,9 @@ void RankingHandler::setOptionsFrontend(std::map<std::string, std::string> optio
 void RankingHandler::calculateRanking(std::shared_ptr<Loader> dHandler){
     index = dHandler->getIndex();
     myDhandler = dHandler;
+    if (dHandler->getXGBoostModelHandle() && !ranker.hasXGBoostModel()){
+        ranker.setXGBoostModelHandle(dHandler->getXGBoostModelHandle());
+    }
     ranker.clearAll();
     if (collectRules){
         ranker.setSaveCandidateRules(true);
@@ -73,6 +76,10 @@ void RankingHandler::writeRules(std::string writePath, std::shared_ptr<Loader> d
     }else{
         throw std::runtime_error("Please set 'ranking_handler.collect_rules' to true when you want to write the rules.");
     }
+}
+
+void RankingHandler::loadXGBoostModel(std::string modelPath){
+    ranker.loadXGBoostModel(modelPath);
 }
 
 namespace {
@@ -492,6 +499,9 @@ void RankingHandler::saveDependencyGraph(std::string writePath){
              << "\n";
     };
 
+    std::size_t rowsWritten = 0;
+    const std::size_t logEvery = 10000;
+
     auto processDirection = [&](bool dirIsTail){
         auto& data = dirIsTail ? ranker.getTailQcandsRules() : ranker.getHeadQcandsRules();
         for (const auto& relPair : data){
@@ -571,6 +581,10 @@ void RankingHandler::saveDependencyGraph(std::string writePath){
                     int label = (gtSet.find(cand) != gtSet.end()) ? 1 : 0;
                     DepGraphFeatures features = extractFeatures(srcPair.second.at(cand));
                     writeRow(query, candStr, label, features);
+                    rowsWritten += 1;
+                    if (rowsWritten % logEvery == 0){
+                        std::cout << "saveDependencyGraph: written " << rowsWritten << " rows..." << std::endl;
+                    }
                 }
             }
         }
@@ -580,6 +594,7 @@ void RankingHandler::saveDependencyGraph(std::string writePath){
     processDirection(false);
 
     file.close();
+    std::cout << "saveDependencyGraph: written " << rowsWritten << " total rows." << std::endl;
     std::cout << "Dependency graph features written to:  " + writePath << std::endl;
 }
 
