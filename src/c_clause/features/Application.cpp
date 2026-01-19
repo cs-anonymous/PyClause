@@ -299,13 +299,13 @@ void ApplicationHandler::calculateQueryResults(TripleStorage& target, TripleStor
 
                     int positiveDep = 0;
                     int negativeDep = 0;
-                    std::unordered_set<Rule*> ignoredRules;
-                    if (rank_dependencyMethod == "positive" || rank_dependencyMethod == "negative"){
-                        bool positive = (rank_dependencyMethod == "positive");
-                        struct DepEdge { Rule* a; Rule* b; double lift; };
-                        std::vector<DepEdge> depEdges;
-                        depEdges.reserve(appliedRules.size());
-
+                    bool usePositive = (rank_dependencyMethod == "positive" || rank_dependencyMethod == "all");
+                    bool useNegative = (rank_dependencyMethod == "negative" || rank_dependencyMethod == "all");
+                    std::unordered_map<Rule*, double> outPosSum;
+                    std::unordered_map<Rule*, int> outPosDeg;
+                    std::unordered_map<Rule*, double> inNegSum;
+                    std::unordered_map<Rule*, int> inNegDeg;
+                    if (usePositive || useNegative){
                         for (Rule* rule : appliedRules){
                             int rid = rule->getID();
                             for (const auto& depPair : rule->dependency){
@@ -314,46 +314,24 @@ void ApplicationHandler::calculateQueryResults(TripleStorage& target, TripleStor
                                 if (!dep || dep->i != rid){
                                     continue;
                                 }
-                                if (dep->lift > 0){
-                                    positiveDep += 1;
-                                }else if (dep->lift < 0){
-                                    negativeDep += 1;
-                                }
-                                if (positive && dep->lift <= 0){
-                                    continue;
-                                }
-                                if (!positive && dep->lift >= 0){
-                                    continue;
-                                }
                                 auto itOther = appliedById.find(otherId);
                                 if (itOther == appliedById.end()){
                                     continue;
                                 }
-                                depEdges.push_back({rule, itOther->second, dep->lift});
+                                if (dep->lift > 0){
+                                    if (usePositive){
+                                        positiveDep += 1;
+                                        outPosSum[rule] += std::abs(dep->lift);
+                                        outPosDeg[rule] += 1;
+                                    }
+                                }else if (dep->lift < 0){
+                                    if (useNegative){
+                                        negativeDep += 1;
+                                        inNegSum[itOther->second] += std::abs(dep->lift);
+                                        inNegDeg[itOther->second] += 1;
+                                    }
+                                }
                             }
-                        }
-
-                        std::sort(depEdges.begin(), depEdges.end(), [](const DepEdge& a, const DepEdge& b) {
-                            return std::abs(a.lift) > std::abs(b.lift);
-                        });
-
-                        for (const auto& edge : depEdges){
-                            Rule* rule = edge.a;
-                            Rule* otherRule = edge.b;
-                            if (ignoredRules.find(rule) != ignoredRules.end() || ignoredRules.find(otherRule) != ignoredRules.end()){
-                                continue;
-                            }
-                            double sA = ruleSurprisal[rule];
-                            double sB = ruleSurprisal[otherRule];
-                            Rule* larger = (sA >= sB) ? rule : otherRule;
-                            Rule* smaller = (sA >= sB) ? otherRule : rule;
-                            if (ignoredRules.find(smaller) != ignoredRules.end()){
-                                continue;
-                            }
-                            if (positive){
-                                ruleSurprisal[larger] += ruleSurprisal[smaller];
-                            }
-                            ignoredRules.insert(smaller);
                         }
                     }
 
@@ -364,11 +342,19 @@ void ApplicationHandler::calculateQueryResults(TripleStorage& target, TripleStor
                     for (Rule* rule : appliedRules){
                         double base = -std::log(1 - rule->getConfidence());
                         ruleSurprisalList.push_back(base);
-                        if (ignoredRules.find(rule) != ignoredRules.end()){
-                            newRuleSurprisal.push_back(0.0);
-                        }else{
-                            newRuleSurprisal.push_back(ruleSurprisal[rule]);
+                        double outVal = 0.0;
+                        double inVal = 0.0;
+                        auto itOutDeg = outPosDeg.find(rule);
+                        if (itOutDeg != outPosDeg.end() && itOutDeg->second > 0){
+                            outVal = outPosSum[rule] / static_cast<double>(itOutDeg->second);
                         }
+                        auto itInDeg = inNegDeg.find(rule);
+                        if (itInDeg != inNegDeg.end() && itInDeg->second > 0){
+                            inVal = inNegSum[rule] / static_cast<double>(itInDeg->second);
+                        }
+                        double adjusted = base + rank_positiveWeight * outVal - rank_negativeWeight * inVal;
+                        adjusted = std::min(7.0, std::max(0.0, adjusted));
+                        newRuleSurprisal.push_back(adjusted);
                     }
 
                     std::vector<double> surprisals;
@@ -461,17 +447,13 @@ void ApplicationHandler::sortAndProcessNoisy(std::vector<std::pair<int,double>>&
             ruleSurprisal[rule] = -std::log(1 - rule->getConfidence());
         }
 
-        std::unordered_set<Rule*> ignoredRules;
-        if (rank_dependencyMethod == "positive" || rank_dependencyMethod == "negative"){
-            bool positive = (rank_dependencyMethod == "positive");
-            struct DepEdge {
-                Rule* a;
-                Rule* b;
-                double lift;
-            };
-            std::vector<DepEdge> depEdges;
-            depEdges.reserve(appliedRules.size());
-
+        bool usePositive = (rank_dependencyMethod == "positive" || rank_dependencyMethod == "all");
+        bool useNegative = (rank_dependencyMethod == "negative" || rank_dependencyMethod == "all");
+        std::unordered_map<Rule*, double> outPosSum;
+        std::unordered_map<Rule*, int> outPosDeg;
+        std::unordered_map<Rule*, double> inNegSum;
+        std::unordered_map<Rule*, int> inNegDeg;
+        if (usePositive || useNegative){
             for (Rule* rule : appliedRules){
                 int rid = rule->getID();
                 for (const auto& depPair : rule->dependency){
@@ -483,51 +465,43 @@ void ApplicationHandler::sortAndProcessNoisy(std::vector<std::pair<int,double>>&
                     if (dep->i != rid){
                         continue;
                     }
-                    if (positive && dep->lift <= 0){
-                        continue;
-                    }
-                    if (!positive && dep->lift >= 0){
-                        continue;
-                    }
                     auto itOther = appliedById.find(otherId);
                     if (itOther == appliedById.end()){
                         continue;
                     }
-                    depEdges.push_back({rule, itOther->second, dep->lift});
+                    if (dep->lift > 0){
+                        if (usePositive){
+                            outPosSum[rule] += std::abs(dep->lift);
+                            outPosDeg[rule] += 1;
+                        }
+                    }else if (dep->lift < 0){
+                        if (useNegative){
+                            inNegSum[itOther->second] += std::abs(dep->lift);
+                            inNegDeg[itOther->second] += 1;
+                        }
+                    }
                 }
-            }
-
-            std::sort(depEdges.begin(), depEdges.end(), [](const DepEdge& a, const DepEdge& b) {
-                return std::abs(a.lift) > std::abs(b.lift);
-            });
-
-            for (const auto& edge : depEdges){
-                Rule* rule = edge.a;
-                Rule* otherRule = edge.b;
-                if (ignoredRules.find(rule) != ignoredRules.end() || ignoredRules.find(otherRule) != ignoredRules.end()){
-                    continue;
-                }
-                double sA = ruleSurprisal[rule];
-                double sB = ruleSurprisal[otherRule];
-                Rule* larger = (sA >= sB) ? rule : otherRule;
-                Rule* smaller = (sA >= sB) ? otherRule : rule;
-                if (ignoredRules.find(smaller) != ignoredRules.end()){
-                    continue;
-                }
-                if (positive){
-                    ruleSurprisal[larger] += ruleSurprisal[smaller];
-                }
-                ignoredRules.insert(smaller);
             }
         }
 
         std::vector<double> surprisals;
         surprisals.reserve(appliedRules.size());
         for (Rule* rule : appliedRules){
-            if (ignoredRules.find(rule) != ignoredRules.end()){
-                continue;
+            double outVal = 0.0;
+            double inVal = 0.0;
+            auto itOutDeg = outPosDeg.find(rule);
+            if (itOutDeg != outPosDeg.end() && itOutDeg->second > 0){
+                outVal = outPosSum[rule] / static_cast<double>(itOutDeg->second);
             }
-            surprisals.push_back(ruleSurprisal[rule]);
+            auto itInDeg = inNegDeg.find(rule);
+            if (itInDeg != inNegDeg.end() && itInDeg->second > 0){
+                inVal = inNegSum[rule] / static_cast<double>(itInDeg->second);
+            }
+            double adjusted = ruleSurprisal[rule] + rank_positiveWeight * outVal - rank_negativeWeight * inVal;
+            adjusted = std::min(7.0, std::max(0.0, adjusted));
+            if (adjusted > 0){
+                surprisals.push_back(adjusted);
+            }
         }
 
         std::sort(surprisals.begin(), surprisals.end(), std::greater<double>());
@@ -828,6 +802,15 @@ void ApplicationHandler::setAggregationSharpness(double val){
 void ApplicationHandler::setDependencyMethod(std::string method){
     rank_dependencyMethod = method;
 }
+
+void ApplicationHandler::setPositiveWeight(double val){
+    rank_positiveWeight = val;
+}
+
+void ApplicationHandler::setNegativeWeight(double val){
+    rank_negativeWeight = val;
+}
+
 
 void ApplicationHandler::setSaveCandidateRules(bool ind){
     saveCandidateRules = ind;

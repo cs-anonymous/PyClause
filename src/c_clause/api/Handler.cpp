@@ -26,6 +26,8 @@ void BackendHandler::setRankingOptions(std::map<std::string, std::string> option
         {"aggregation_function", [&ranker](std::string val) { ranker.setAggregationFunc(val); }},
         {"aggregation_sharpness", [&ranker](std::string val) { ranker.setAggregationSharpness(std::stod(val)); }},
         {"dependency_method", [&ranker](std::string val) { ranker.setDependencyMethod(val); }},
+        {"positive_weight", [&ranker](std::string val) { ranker.setPositiveWeight(std::stod(val)); }},
+        {"negative_weight", [&ranker](std::string val) { ranker.setNegativeWeight(std::stod(val)); }},
         {"disc_at_least", [&ranker](std::string val) { ranker.setDiscAtLeast(std::stoi(val)); }},
         {"hard_stop_at", [&ranker](std::string val) { ranker.setNumPreselect(std::stoi(val)); }},
         {"num_top_rules", [&ranker](std::string val) {ranker.setScoreNumTopRules(std::stoi(val));}},

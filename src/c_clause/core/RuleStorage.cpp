@@ -354,7 +354,7 @@ void RuleStorage::loadDependency(std::string path, int numThreads){
                 if (id1 == id2){
                     continue;
                 }
-                if (id1 > id2){
+                if (conf1 < conf2){
                     std::swap(id1, id2);
                     std::swap(conf1, conf2);
                 }

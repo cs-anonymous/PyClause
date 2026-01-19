@@ -133,6 +133,10 @@ ranking_handler:
   aggregation_sharpness: 0
   # dependency handling method: "none" (default)
   dependency_method: "none"
+  # weight for positive dependency edges (default: 0)
+  positive_weight: 0
+  # weight for negative dependency edges (default: 0)
+  negative_weight: 0
 
   # dont add candidate proposals c for queries (h, r, ?) or (?, r, t) if
   # (h, r, c) or (c, r, t) exists in the KG given by the "data" argument of the loader

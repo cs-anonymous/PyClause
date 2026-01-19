@@ -48,6 +48,8 @@ public:
     void setAggregationFunc(std::string func);
     void setAggregationSharpness(double val);
     void setDependencyMethod(std::string method);
+    void setPositiveWeight(double val);
+    void setNegativeWeight(double val);
     void setSaveCandidateRules(bool ind);
     void setPerformAggregation(bool ind);
     void setDiscAtLeast(int num);
@@ -116,6 +118,8 @@ private:
     std::string rank_aggrFunc="maxplus";
     double rank_aggrSharpness=0.0;
     std::string rank_dependencyMethod="none";
+    double rank_positiveWeight = 0.0;
+    double rank_negativeWeight = 0.0;
 
     // track for each candidate the predicting rules (saved in e.g. headQcandsRules )
     bool saveCandidateRules=false;
