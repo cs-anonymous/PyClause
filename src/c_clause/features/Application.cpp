@@ -244,10 +244,19 @@ void ApplicationHandler::calculateQueryResults(TripleStorage& target, TripleStor
 
                 std::unordered_set<int> allRuleIds;
                 std::vector<int> candidateOrder = qResults.getCandsOrdered();
+                double globalMaxConf = -1.0;
                 for (int cand : candidateOrder){
                     auto& rulesForCand = qResults.getRulesForCand(cand);
+                    std::unordered_set<int> seen;
                     for (Rule* rule : rulesForCand){
-                        allRuleIds.insert(rule->getID());
+                        int rid = rule->getID();
+                        if (seen.insert(rid).second){
+                            allRuleIds.insert(rid);
+                            double conf = rule->getConfidence();
+                            if (conf > globalMaxConf){
+                                globalMaxConf = conf;
+                            }
+                        }
                     }
                 }
                 std::vector<int> allRuleIdsVec(allRuleIds.begin(), allRuleIds.end());
@@ -272,7 +281,37 @@ void ApplicationHandler::calculateQueryResults(TripleStorage& target, TripleStor
                 oss << "],\"candidates\":[";
 
                 bool firstCand = true;
+                bool hasGtCandidate = false;
+                std::vector<int> filteredCandidates;
+                filteredCandidates.reserve(candidateOrder.size());
                 for (int cand : candidateOrder){
+                    auto& rulesForCand = qResults.getRulesForCand(cand);
+                    std::unordered_set<int> seen;
+                    int uniqueRules = 0;
+                    double candMaxConf = -1.0;
+                    for (Rule* rule : rulesForCand){
+                        int rid = rule->getID();
+                        if (seen.insert(rid).second){
+                            uniqueRules += 1;
+                            double conf = rule->getConfidence();
+                            if (conf > candMaxConf){
+                                candMaxConf = conf;
+                            }
+                        }
+                    }
+                    if (uniqueRules == 1 && candMaxConf < globalMaxConf){
+                        continue;
+                    }
+                    if (gtSet.find(cand) != gtSet.end()){
+                        hasGtCandidate = true;
+                    }
+                    filteredCandidates.push_back(cand);
+                }
+                if (!hasGtCandidate){
+                    continue;
+                }
+
+                for (int cand : filteredCandidates){
                     auto& rulesForCand = qResults.getRulesForCand(cand);
                     std::vector<int> ruleIds;
                     std::vector<Rule*> appliedRules;
