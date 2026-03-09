@@ -26,6 +26,7 @@ public:
     void calculateRanking(std::shared_ptr<Loader> dHandler);
     std::unordered_map<int,std::unordered_map<int,std::vector<std::pair<int, double>>>> getRanking(std::string headOrTail);
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::pair<std::string, double>>>> getStrRanking(std::string headOrTail);
+    std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<std::string, std::vector<int>>>> getAppliedRules(std::string headOrTail);
     
    
     //[rel][source][cand] --> vector to rule indices

@@ -51,6 +51,13 @@ PYBIND11_MODULE(c_clause, m) {
             },
             py::arg("direction"), py::arg("as_string")
         )
+        .def(
+            "get_applied_rules",
+            [](RankingHandler& self, std::string headOrTail)->py::object{
+                return py::cast(self.getAppliedRules(headOrTail));
+            },
+            py::arg("direction")
+        )
     ; //class end
     // QAHandler()
     py::class_<QAHandler>(m, "QAHandler") 
